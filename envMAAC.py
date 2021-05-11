@@ -30,6 +30,7 @@ class Environment(BaseEnvironment):
         self.num_UAV = cfg['num_UAV']
         self.num_dest = cfg['num_dest']
         self.grid_size = cfg['grid_size']
+        self.obs_type = cfg['obs_type']
         self.state = None
         self.terminal = None
         self.terminal_idx = None
@@ -42,6 +43,8 @@ class Environment(BaseEnvironment):
         self.destination_control_param = cfg['dest_control']
         self.step_control = cfg['step_control']
         self.safe_dist = cfg['safe_dist']
+        self.last_action = []
+        self.last_reward = []
 
         self.action_space = [(1, 0), (0, 1), (-1, 0), (0, -1)]
 
@@ -68,11 +71,14 @@ class Environment(BaseEnvironment):
         if len(self.state) != self.num_UAV or len(self.terminal) != self.num_UAV:
             print("Error Input: number of UAV")
 
-        state_input = self.get_state_input(self.state)
+        self.last_action = [0] * self.num_UAV
+        self.last_reward = [0.0] * self.num_UAV
 
-        actor_obs_list = self.generate_agent_obs_CNN(self.state)
+        state_input = self.get_state_input(self.state, self.obs_type == 1)
 
-        critic_obs_list, neighbors, min_dist_list = self.generate_critic_obs_CNN(self.state)
+        actor_obs_list = self.generate_agent_obs_CNN(self.state, self.obs_type == 1)
+
+        critic_obs_list, neighbors, min_dist_list = self.generate_critic_obs_CNN(self.state, self.obs_type == 1)
         # collision_list = [d < self.safe_dist for d in min_dist_list]
 
         return self.state, state_input, actor_obs_list, critic_obs_list, neighbors, min_dist_list
@@ -122,11 +128,11 @@ class Environment(BaseEnvironment):
             return self.state, [None] * self.num_UAV, [None] * self.num_UAV, [None] * self.num_UAV,\
                    torch.zeros(self.num_UAV, self.num_UAV), [65535] * self.num_UAV, tuple(reward), True
 
-        state_input = self.get_state_input(self.state)
+        state_input = self.get_state_input(self.state, self.obs_type == 1)
 
-        actor_obs_list = self.generate_agent_obs_CNN(self.state)
+        actor_obs_list = self.generate_agent_obs_CNN(self.state, self.obs_type == 1)
 
-        critic_obs_list, neighbors, min_dist_list = self.generate_critic_obs_CNN(self.state)
+        critic_obs_list, neighbors, min_dist_list = self.generate_critic_obs_CNN(self.state, self.obs_type == 1)
         collision_list = [d < self.safe_dist for d in min_dist_list]
 
         for uav in range(self.num_UAV):
@@ -134,6 +140,8 @@ class Environment(BaseEnvironment):
 
         # for uav in range(self.num_UAV):
         #     reward[uav] = uav
+        self.last_reward = reward
+        self.last_action = [a + 1 for a in action]
 
         return self.state, state_input, actor_obs_list, critic_obs_list, \
                neighbors, min_dist_list, tuple(reward), False
@@ -151,7 +159,7 @@ class Environment(BaseEnvironment):
         self.state = start
         self.terminal = goal
 
-    def get_state_input(self, state):
+    def get_state_input(self, state, meta=False):
         state_input_list = []
         for ii in range(self.num_UAV):
             if state[ii] == self.terminal[ii]:
@@ -164,7 +172,13 @@ class Environment(BaseEnvironment):
                 state_input[self.terminal_idx[ii]] = 1
                 state_input[self.num_dest + relative_x] = 1
                 state_input[self.num_dest + 2 * self.grid_size - 1 + relative_y] = 1
-                state_input_list.append(state_input.view(-1).unsqueeze(0))
+                action_reward = torch.zeros(len(self.action_space) + 2)
+                action_reward[self.last_action[ii]] = 1
+                action_reward[-1] = self.last_reward[ii]
+                if meta:
+                    state_input_list.append(torch.cat((state_input, action_reward)).view(-1).unsqueeze(0))
+                else:
+                    state_input_list.append(state_input.view(-1).unsqueeze(0))
         return state_input_list
 
     def generate_agent_obs_binary(self, state):
@@ -190,10 +204,10 @@ class Environment(BaseEnvironment):
                 actor_obs_list.append(actor_obs.view(-1).unsqueeze(0))
         return actor_obs_list
 
-    def generate_agent_obs_CNN(self, state):
+    def generate_agent_obs_CNN(self, state, meta=False):
         actor_obs_list = []
         for uav in range(self.num_UAV):
-            actor_obs = torch.zeros(3, 2 * self.view_length - 1, 2 * self.view_length - 1)
+            actor_obs = torch.zeros(5, 2 * self.view_length - 1, 2 * self.view_length - 1)
             if state[uav] == self.terminal[uav]:
                 actor_obs_list.append(None)
                 continue
@@ -210,15 +224,20 @@ class Environment(BaseEnvironment):
                         actor_obs[1, relative_x_idx, relative_y_idx] = self.terminal_idx[intruder] + 1
                         des_dist = np.linalg.norm(np.array(self.terminal[intruder]) - np.array(state[intruder])) + 1
                         actor_obs[2, relative_x_idx, relative_y_idx] = des_dist/self.grid_size
-            actor_obs_list.append(actor_obs.unsqueeze(0))
+                        actor_obs[3, relative_x_idx, relative_y_idx] = self.last_action[intruder]
+                        actor_obs[4, relative_x_idx, relative_y_idx] = self.last_reward[intruder]
+            if meta:
+                actor_obs_list.append(actor_obs.unsqueeze(0))
+            else:
+                actor_obs_list.append(actor_obs[:3, :, :].unsqueeze(0))
         return actor_obs_list
 
-    def generate_critic_obs_CNN(self, state):
+    def generate_critic_obs_CNN(self, state, meta=False):
         critic_obs_list = []
         min_dist_list = []
         neighbors = torch.eye(self.num_UAV)
         for uav in range(self.num_UAV):
-            critic_obs = torch.zeros(3, 2 * self.critic_view_length - 1, 2 * self.critic_view_length - 1)
+            critic_obs = torch.zeros(5, 2 * self.critic_view_length - 1, 2 * self.critic_view_length - 1)
             min_dist = self.grid_size * 2
             if state[uav] == self.terminal[uav]:
                 critic_obs_list.append(None)
@@ -239,9 +258,15 @@ class Environment(BaseEnvironment):
                         critic_obs[1, relative_x_idx, relative_y_idx] = self.terminal_idx[intruder] + 1
                         des_dist = np.linalg.norm(np.array(self.terminal[intruder]) - np.array(state[intruder])) + 1
                         critic_obs[2, relative_x_idx, relative_y_idx] = des_dist/self.grid_size
+                        critic_obs[3, relative_x_idx, relative_y_idx] = self.last_action[intruder]
+                        critic_obs[4, relative_x_idx, relative_y_idx] = self.last_reward[intruder]
                     if math.sqrt(relative_x ** 2 + relative_y ** 2) < min_dist:
                         min_dist = math.sqrt(relative_x ** 2 + relative_y ** 2)
-            critic_obs_list.append(critic_obs.unsqueeze(0))
+
+            if meta:
+                critic_obs_list.append(critic_obs.unsqueeze(0))
+            else:
+                critic_obs_list.append(critic_obs[:3, :, :].unsqueeze(0))
             min_dist_list.append(min_dist)
 
         return critic_obs_list, neighbors, min_dist_list

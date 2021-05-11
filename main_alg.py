@@ -51,6 +51,7 @@ class rl_alg:
         self.label = cfg['label']
         self.num_UAV = cfg['num_UAV']
         self.num_dest = cfg['num_dest']
+        self.obs_type = cfg['obs_type']
         self.grid_size = cfg['grid_size']
         self.view_length = cfg['view_length']
         self.critic_view_length = cfg['critic_view_length']
@@ -81,11 +82,11 @@ class rl_alg:
             'hidden2': 50,
             'init_w': 3e-3
         }
-        len_state = self.num_dest + 4 * self.grid_size - 2
-        len_actor_obs = (2 * self.view_length - 1) ** 2 * self.num_dest
-        size_actor_obs = 2 * self.view_length - 1
-        layers_agent_obs = 3
-        if self.alg == 0:
+        if self.obs_type == 0:
+            # obs include intruders' distribution, dest idx, direction, dist to dest. Actor & critic has different size.
+            len_state = self.num_dest + 4 * self.grid_size - 2
+            size_actor_obs = 2 * self.view_length - 1
+            layers_agent_obs = 3
             size_critic_obs = self.critic_view_length * 2 - 1
             layers_critic_obs = 3
             self.actor = agentActor_CNN(layers_agent_obs, size_actor_obs, size_actor_obs, len_state,
@@ -98,11 +99,17 @@ class rl_alg:
             self.actor.eval()
             self.critic.eval()
         else:
-            # self.actor = agentActor_binary(len_state, len_actor_obs, len(self.action_space)).to(device)
-            # self.critic = agentCritic_binary(len_state, len_actor_obs).to(device)
+            # obs include intruders' distribution, dest idx, direction, dist to dest, last action, last reward.
+            # Actor & critic has different size.
+            # On Policy Only
+            len_state = self.num_dest + 4 * self.grid_size - 2 + len(self.action_space) + 2
+            size_actor_obs = 2 * self.view_length - 1
+            layers_agent_obs = 5
+            size_critic_obs = self.critic_view_length * 2 - 1
+            layers_critic_obs = 5
             self.actor = agentActor_CNN(layers_agent_obs, size_actor_obs, size_actor_obs, len_state,
                                         len(self.action_space)).to(device)
-            self.critic = agentCritic_CNN(layers_agent_obs, size_actor_obs, size_actor_obs, len_state).to(device)
+            self.critic = agentCritic_CNN(layers_critic_obs, size_critic_obs, size_critic_obs, len_state).to(device)
 
             self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=3e-5)
             self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=3e-4)
@@ -171,8 +178,8 @@ class rl_alg:
         self.target_update = 10
         self.normal_color = pygame.Color('white')
         self.wall_color = pygame.Color('gray')
-        self.w = 19
-        self.margin = 1
+        self.w = 10
+        self.margin = 0
         self.maze = [[0]*100 for n in range(100)]
 
         # if self.mode == "Test":
@@ -204,15 +211,31 @@ class rl_alg:
         #                   ((0, 29), (0, 28), (1, 29), (1, 28)),
         #                   ((29, 0), (28, 0), (29, 1), (28, 1)),
         #                   ((0, 0), (1, 0), (0, 1), (1, 1)))
-        self.start_set = (((29, 29), (29, 28), (28, 29), (28, 28)),
-                          ((0, 29), (0, 28), (1, 29), (1, 28)),
-                          ((29, 0), (28, 0), (29, 1), (28, 1)),
-                          ((0, 0), (1, 0), (0, 1), (1, 1)))
-                          # ((29, 29), (29, 29), (29, 29), (29, 29)))
-        self.goal_set = ((0, 0), (29, 0), (0, 29), (29, 29))
-        self.start = tuple([random.choice(start_set) for start_set in self.start_set])
-        self.goal = self.goal_set
-        self.goal_idx = (0, 1, 2, 3)
+        # self.start_set = (((29, 29), (29, 28), (28, 29), (28, 28)),
+        #                   ((0, 29), (0, 28), (1, 29), (1, 28)),
+        #                   ((29, 0), (28, 0), (29, 1), (28, 1)),
+        #                   ((0, 0), (1, 0), (0, 1), (1, 1)))
+        #                   # ((29, 29), (29, 29), (29, 29), (29, 29)))
+        # self.goal_set = ((0, 0), (29, 0), (0, 29), (29, 29))
+
+        self.start = ((31, 49), (42, 42), (49, 31), (49, 18), (42, 7), (31, 0), (18, 0), (7, 7), (0, 18), (0, 31), (7, 42), (18, 49))
+        self.goal = ((18, 0), (7, 7), (0, 18), (0, 31), (7, 42), (18, 49), (31, 49), (42, 42), (49, 31), (49, 18), (42, 7), (31, 0))
+
+        # self.start_set = (((0, 8), (0, 9), (1, 8), (1, 9)),
+        #                   ((0, 18), (0, 19), (1, 18), (1, 19)),
+        #                   ((29, 8), (29, 9), (28, 8), (28, 9)),
+        #                   ((29, 18), (29, 19), (28, 18), (28, 19)),
+        #                   ((8, 28), (9, 29), (8, 28), (9, 29)),
+        #                   ((18, 28), (19, 29), (18, 28), (19, 29)),
+        #                   ((18, 0), (19, 0), (18, 1), (19, 1)),
+        #                   ((8, 0), (9, 0), (8, 1), (9, 1)))
+        # self.goal_set = ((29, 19), (29, 9), (0, 19), (0, 9), (19, 0), (9, 0), (9, 29), (19, 29))
+
+
+
+        # self.start = tuple([random.choice(start_set) for start_set in self.start_set])
+        # self.goal = self.goal_set
+        self.goal_idx = range(self.num_UAV)
 
         self._num_ep_steps = 1
         self._total_reward = 0.0
@@ -266,8 +289,8 @@ class rl_alg:
                                            self.actor_obs_list,
                                            self.critic_obs_list,
                                            self.neighbors,
-                                           torch.tensor(self._last_action, dtype=torch.long).unsqueeze(1).to(device),
-                                           torch.tensor(reward, dtype=torch.float64).unsqueeze(1).to(device),
+                                           torch.tensor(self._last_action, dtype=torch.long).unsqueeze(1),
+                                           torch.tensor(reward, dtype=torch.float64).unsqueeze(1),
                                            new_state_input,
                                            new_actor_obs_list,
                                            new_critic_obs_list, 0.0))
@@ -357,12 +380,10 @@ class rl_alg:
                 critc_obs_list = list(itertools.chain.from_iterable(batch.critic_obs_list))  # flatten list
                 critc_obs_batch_non_final = torch.cat([s for s in critc_obs_list if s is not None]).to(device)
 
-                test1 = torch.tensor(tuple(map(lambda s: s is not None, actor_obs_list)), device=device,
-                                    dtype=torch.bool)
-                test2 = torch.tensor(tuple(map(lambda s: s is not None, critc_obs_list)), device=device,
-                                     dtype=torch.bool)
-                if not (torch.all(test1 == non_final_state_mask).item() and torch.all(test1 == test2).item()):
-                    print("Error")
+                test1 = torch.tensor(tuple(map(lambda s: s is not None, actor_obs_list)), dtype=torch.bool)
+                test2 = torch.tensor(tuple(map(lambda s: s is not None, critc_obs_list)), dtype=torch.bool)
+                # if not (torch.all(test1 == non_final_state_mask).item() and torch.all(test1 == test2).item()):
+                #     print("Error")
 
                 next_state_input_list = list(itertools.chain.from_iterable(batch.next_state_input))
                 non_final_next_state_mask = torch.tensor(tuple(map(lambda s: s is not None, next_state_input_list)),
@@ -420,21 +441,22 @@ class rl_alg:
                     print("Error")
 
                 actor_obs_batch_non_final = torch.cat([s for s in actor_obs_list if s is not None]).to(device)
-
+                critic_obs_list = list(itertools.chain.from_iterable(batch.critic_obs_list))
+                critic_obs_batch_non_final = torch.cat([s for s in critic_obs_list if s is not None]).to(device)
                 next_state_input_list = list(itertools.chain.from_iterable(batch.next_state_input))
                 non_final_next_state_mask = torch.tensor(tuple(map(lambda s: s is not None, next_state_input_list)),
                                                          device=device, dtype=torch.bool)
                 next_state_input_batch_non_final = torch.cat([s for s in next_state_input_list if s is not None]).to(
                     device)
-                next_actor_obs_list = list(itertools.chain.from_iterable(batch.next_actor_obs_list))
-                next_actor_obs_batch_non_final = torch.cat([s for s in next_actor_obs_list if s is not None]).to(
+                next_critic_obs_list = list(itertools.chain.from_iterable(batch.next_critic_obs_list))
+                next_critic_obs_batch_non_final = torch.cat([s for s in next_critic_obs_list if s is not None]).to(
                     device)
 
                 values = torch.zeros((data_size * self.num_UAV, 1), device=device)
-                values[non_final_state_mask, :] = self.critic(state_input_batch_non_final, actor_obs_batch_non_final)
+                values[non_final_state_mask, :] = self.critic(state_input_batch_non_final, critic_obs_batch_non_final)
                 next_values = torch.zeros((data_size * self.num_UAV, 1), device=device)
                 next_values[non_final_next_state_mask, :] = self.critic(next_state_input_batch_non_final,
-                                                                        next_actor_obs_batch_non_final)
+                                                                        next_critic_obs_batch_non_final)
 
                 reward_batch = torch.cat(batch.reward).to(device)
                 # reward_test = torch.reshape(reward_batch, (data_size, self.num_UAV))

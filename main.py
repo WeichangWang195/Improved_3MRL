@@ -9,23 +9,33 @@ import random
 import sys
 
 
-def run(num_UAV, num_dest, rdm_seed, alg):
+def run(num_UAV, num_dest, rdm_seed, alg=0, obs_type=0, obs_size=0):
+    """
+    :param num_UAV: num of agent in the system
+    :param num_dest: num of destination
+    :param rdm_seed: random seed
+    :param alg: parameter update algorithm, alg=0: new algorithm; alg=1: old algorithm, general actor critic.
+    :param obs_type: =1: meta learning; =0: general learning.
+    :param obs_size: =1: actor obs size = critic obs size; =0, critic obs size >> actor obs size
+    :return:
+    """
     label = str(rdm_seed) + str(alg)
     setup_seed(rdm_seed)
-    grid_size = 30
+    grid_size = 50
     view_length = 5
-    critic_view_length = 20
-    safe_dist = 2
+    critic_view_length = 25 if obs_size==0 else view_length
+    safe_dist = 3
     reward_normalization = 1/200
 
     surface = create_window(grid_size)
 
-    maxEpisodes = 20010
+    maxEpisodes = 50010
     env_cfg = {
         'num_UAV': num_UAV,
         'num_dest': num_dest,
         'grid_size': grid_size,
         'view_length': view_length,
+        'obs_type': obs_type,
         'critic_view_length': critic_view_length,
         'reward_terminal': grid_size * 10 * reward_normalization,
         'safe_dist': safe_dist,
@@ -38,6 +48,7 @@ def run(num_UAV, num_dest, rdm_seed, alg):
     cfg = {
         'mode': "Train",
         'alg': alg,
+        'obs_type': obs_type,
         'num_UAV': num_UAV,
         'num_dest': num_dest,
         'label': label,
@@ -121,7 +132,7 @@ def setup_seed(seed):
 
 def create_window(grid_size):
     title = "Collision Avoidance"
-    size = (20*grid_size, 20*grid_size)
+    size = (10*grid_size, 10*grid_size)
     pygame.init()
     if pygame.display.get_init():
         surface = pygame.display.set_mode(size, 0, 0)
@@ -133,12 +144,6 @@ def create_window(grid_size):
 
 if __name__ == "__main__":
     seed = 0
-    # run(4, 4, rdm_seed=seed, alg=1)
-    run(4, 4, rdm_seed=seed, alg=0)
-    run(4, 4, rdm_seed=seed, alg=1)
-    # run(4, rdm_seed=seed, alg=1, delay=1)
-    # run(8, rdm_seed=seed, alg=0, delay=2)
-    # for seed in range(0, 1):
-    #     # run(8, seed, 0, str(0) + str(seed))
-    #     for alg in [0, 2]:
-    #         run(8, seed, alg, str(alg)+str(seed))
+    run(12, 12, rdm_seed=seed, alg=0, obs_type=0, obs_size=0)
+    # run(12, 12, rdm_seed=seed, alg=1, obs_type=0, obs_size=1)
+    # run(8, 8, rdm_seed=seed, alg=0, obs_type=0, obs_size=1)
