@@ -17,17 +17,7 @@ def total_cost(data_len, step):
     step = step
 
     for ii in range(1):
-        with open("Data/eps_records_v1_00", 'rb') as f:
-            npzfile = np.load(f)
-            cost = npzfile['total_reward']
-        x_range = min(data_len, len(cost))
-        for tt in range(x_range):
-            x.append(int(round(tt / step)) * step)
-            data.append(cost[tt])
-            style.append("New Alg")
-
-    for ii in range(1):
-        with open("Data/eps_records_v1_01", 'rb') as f:
+        with open("Data/eps_records_v1_scalable00", 'rb') as f:
             npzfile = np.load(f)
             cost = npzfile['total_reward']
         x_range = min(data_len, len(cost))
@@ -36,6 +26,16 @@ def total_cost(data_len, step):
             data.append(cost[tt])
             style.append("Old Alg")
 
+    for ii in range(1):
+        with open("Data/eps_records_v1_ssac00", 'rb') as f:
+            npzfile = np.load(f)
+            cost = npzfile['total_reward']
+        x_range = min(data_len, len(cost))
+        for tt in range(x_range):
+            x.append(int(round(tt / step)) * step)
+            data.append(cost[tt])
+            style.append("New Alg")
+
     data = pd.DataFrame(list(zip(x, data, style)), columns=['Episode (k)', 'Total Reward', 'style'])
     sns.relplot(x="Episode (k)", y="Total Reward", style="style", kind="line", data=data)
     plt.show()
@@ -43,21 +43,21 @@ def total_cost(data_len, step):
 
 def avg_reward(start, end):
     for ii in range(1):
-        with open("Data/eps_records_v1_00", 'rb') as f:
+        with open("Data/eps_records_v1_scalable00", 'rb') as f:
             npzfile = np.load(f)
             cost = npzfile['total_reward']
         print(statistics.mean(cost[start:end]))
 
     for ii in range(1):
-        with open("Data/eps_records_v1_01", 'rb') as f:
+        with open("Data/eps_records_v1_ssac00", 'rb') as f:
             npzfile = np.load(f)
             cost = npzfile['total_reward']
         print(statistics.mean(cost[start:end]))
 
 
 def main():
-    total_cost(50000, 2000)
-    avg_reward(40000, 50000)
+    total_cost(100000, 2000)
+    avg_reward(80000, 90000)
 
 
 if __name__ == "__main__":
